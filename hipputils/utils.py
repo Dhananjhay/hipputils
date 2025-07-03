@@ -1,3 +1,6 @@
+import os
+import urllib.request
+import zipfile
 import pandas as pd
 import numpy as np
 import nibabel as nib
@@ -98,7 +101,9 @@ def dice(ref, res_mask, hipp_lbls, output_dice):
 
         output_dice : str
             File path to the output text file where the Dice score will be written.
-
+import os
+import urllib.request
+import zipfile
     Returns
     -------
         None
@@ -327,3 +332,32 @@ def selective_dilation(
     nib.save(new_img, output_nifti)
 
     print(f"Output saved to {output_nifti}")
+
+
+def download_extract(unzip_dir, url):
+    """
+    Downloads a ZIP file from a URL and extracts its contents into a specified directory.
+
+    Parameters
+    ----------
+        unzip_dir : str or Path
+            The directory where the ZIP file contents will be extracted.
+
+        url : str
+            The URL (excluding the "https://") from which to download the ZIP file.
+
+    Returns
+    -------
+        None
+    """
+
+    outdir = str(unzip_dir)
+    os.makedirs(outdir, exist_ok=True)
+
+    zip_path = os.path.join(outdir, "temp.zip")
+    urllib.request.urlretrieve("https://" + url, zip_path)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(outdir)
+
+    os.remove(zip_path)
