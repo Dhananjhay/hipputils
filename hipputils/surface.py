@@ -19,92 +19,128 @@ class Surface:
     Class instance for Surface objects
     """
 
-    def __init__(self,surf_gii):
+    def __init__(self, mesh, metadata=None):
         """
-        Initialize surface
+        Initialize a Surface object.
 
         Parameters
         ----------
-            surf_gii :: str
-                Path to the GIFTI file
+        mesh : pyvista.PolyData
+            The surface mesh representing vertices and faces of the surface.
+        metadata : dict, optional
+            Optional dictionary containing metadata associated with the surface.
+            Defaults to an empty dictionary if not provided.
 
         Returns
         -------
-            None
+        None
         """
+        self.mesh = mesh
+        self.metadata = metadata or {}
 
-        #Load a surface mesh from a GIFTI file
-        self.surf = nib.load(surf_gii)
-        self.vertices = self.surf.agg_data("NIFTI_INTENT_POINTSET")
-        self.faces = self.surf.agg_data("NIFTI_INTENT_TRIANGLE")
-
-    def load_surface_as_pyvista(self):
+    @classmethod
+    def from_gifti(cls, surf_gii):
         """
-        Load a surface mesh from a GIFTI file
+        Load a surface mesh and associated metadata from a GIFTI (.gii) file.
+
+        This method parses the GIFTI file using nibabel, extracting the vertex coordinates,
+        face indices, and any metadata associated with the vertex data array. The faces
+        are converted into a format compatible with PyVista's PolyData, which requires
+        an initial count of points per face (typically 3 for triangles).
 
         Parameters
         ----------
-            None
+        surf_gii : str or Path
+            Path to the GIFTI (.gii) surface file to load.
 
         Returns
         -------
-            pv.PolyData(vertices, faces_pv)
-                 PyVista PolyData object containing the surface mesh.
-        
+        tuple
+            A tuple containing:
+            - mesh : pyvista.PolyData
+                The surface mesh represented as a PyVista PolyData object with vertices
+                and faces loaded from the GIFTI file.
+            - metadata : dict
+                A dictionary of metadata extracted from the vertex data array in the GIFTI
+                file. If no metadata is found, returns an empty dictionary.
+
+        Notes
+        -----
+        - The faces are converted to PyVista format by prefixing each face with the number
+        of points per face (3 for triangles).
+        - This method only extracts the first vertex data array found with intent code
+        'NIFTI_INTENT_POINTSET' for vertices and 'NIFTI_INTENT_TRIANGLE' for faces.
+        - Additional data arrays (such as labels or shape metrics) are not extracted here.
         """
+        surf = nib.load(surf_gii)
+        vertices = surf.agg_data("NIFTI_INTENT_POINTSET")
+        faces = surf.agg_data("NIFTI_INTENT_TRIANGLE")
+        faces_pv = np.hstack([np.full((faces.shape[0], 1), 3), faces])  # PyVista format
 
-        faces_pv = np.hstack([np.full((self.faces.shape[0], 1), 3), self.faces])  # PyVista format
-
-        return pv.PolyData(self.vertices, faces_pv)
-
-
-    @staticmethod
-    def get_adjacent_voxels(mask_a, mask_b):
-        """
-        Create a mask for voxels where label A is adjacent to label B.
-
-        Parameters
-        ----------
-            mask_a :: np.ndarray
-                A 3D binary mask for label A.
-            mask_b :: np.ndarray
-                A 3D binary mask for label B.
-
-        Returns
-        -------
-            adjacency_mask :: np.ndarray
-                A 3D mask where adjacent voxels for label A and label B are marked as True.
-        """
-        # Dilate each mask to identify neighboring regions
-        dilated_a = binary_dilation(mask_a)
-        dilated_b = binary_dilation(mask_b)
-
-        # Find adjacency: voxels of A touching B and B touching A
-        adjacency_mask = (dilated_a.astype("bool") & mask_b.astype("bool")) | (
-            dilated_b.astype("bool") & mask_a.astype("bool")
+        # Find the first darray that represents vertices (NIFTI_INTENT_POINTSET)
+        vertices_darray = next(
+            (
+                darray
+                for darray in surf.darrays
+                if darray.intent == intent_codes["NIFTI_INTENT_POINTSET"]
+            ),
+            None,
         )
 
-        return adjacency_mask
+        # Extract metadata as a dictionary (return empty dict if no metadata)
+        metadata = dict(vertices_darray.meta) if vertices_darray else {}
 
-    @staticmethod
-    def write_surface_to_gifti(mesh, out_surf_gii):
+        return cls(pv.PolyData(vertices, faces_pv), metadata)
+
+    def compute_edge_lengths(self):
         """
-        Writes a PyVista mesh to a GIFTI surface file.
+        Compute the lengths of all edges in a given surface mesh.
 
         Parameters
         ----------
-            mesh ::
+        surface : pyvista.PolyData (or similar)
+            A mesh surface object containing points and edges.
 
-            out_surf_gii ::
+        Returns
+        -------
+        np.ndarray
+            Array of edge lengths (float) for all edges in the surface.
+        """
+
+        # Extract edges
+        edges = self.extract_all_edges()
+
+        # Extract individual edge segments
+        edge_lengths = []
+        lines = edges.lines.reshape(-1, 3)  # Each row: [2, point1, point2]
+
+        for line in lines:
+            _, p1, p2 = line  # First entry is always "2" (pairs of points)
+            length = np.linalg.norm(edges.points[p1] - edges.points[p2])
+            edge_lengths.append(length)
+
+        edge_lengths = np.array(edge_lengths)
+
+        return edge_lengths
+    
+    def to_gifti(self, out_surf_gii):
+        """
+        Write the current surface mesh (point and faces) to a GIFTI (.gii) file.
+
+        Parameters
+        ----------
+            out_surf_gii : str or Path
+                Path where the GIFTI file will be saved.
 
         Returns
         -------
             None
-
         """
 
-        points = mesh.points
-        faces = mesh.faces.reshape((-1, 4))[:, 1:4]  # Extract triangle indices
+        # Extract vertices and faces from self.mesh
+        points = self.mesh.points
+        # Extract triangle indices
+        faces = self.mesh.faces.reshape((-1,4))[:, 1:4].astype(np.int32)
 
         points_darray = nib.gifti.GiftiDataArray(
             data=points, intent="NIFTI_INTENT_POINTSET", datatype="NIFTI_TYPE_FLOAT32"
@@ -114,86 +150,79 @@ class Surface:
             data=faces, intent="NIFTI_INTENT_TRIANGLE", datatype="NIFTI_TYPE_INT32"
         )
 
-        gifti = nib.GiftiImage()
-        gifti.add_gifti_data_array(points_darray)
-        gifti.add_gifti_data_array(tri_darray)
-        gifti.to_filename(out_surf_gii)
+        gifti_img = nib.GiftiImage()
+        gifti_img.add_gifti_data_array(points_darray)
+        gifti_img.add_gifti_data_array(tri_darray)
+        gifti_img.to_filename(out_surf_gii)
 
-    @staticmethod
-    def apply_affine_transform(mesh, affine_matrix, inverse=False):
+
+    def apply_affine(self, affine_matrix, inverse=False):
         """
-        Applies an affine transformation to a PyVista mesh.
+        Apply an affine transformation to the surface and return a new Surface.
 
         Parameters
         ----------
-            mesh :: 
-
-            affine_matrix ::
+        affine_matrix : np.ndarray
+            4x4 affine transformation matrix.
+        inverse : bool, optional
+            If True, apply the inverse of the transformation.
 
         Returns
         -------
-            transformed_mesh :: 
-
+        Surface
+            A new Surface instance with transformed geometry and the same metadata.
         """
         if inverse:
             affine_matrix = np.linalg.inv(affine_matrix)
 
-        transformed_points = (
-            np.hstack([mesh.points, np.ones((mesh.n_points, 1))]) @ affine_matrix.T
-        )[:, :3]
+        points_h = np.hstack([self.mesh.points, np.ones((self.mesh.n_points, 1))])
+        transformed_points = (points_h @ affine_matrix.T)[:, :3]
+        transformed_mesh = pv.PolyData(transformed_points, self.mesh.faces)
 
-        transformed_mesh = pv.PolyData(transformed_points, mesh.faces)
-
-        return transformed_mesh
+        return Surface(transformed_mesh, metadata=self.metadata.copy())
     
-    @staticmethod
-    def remove_nan_vertices(mesh):
+    def remove_nan_vertices(self):
         """
-        Removes NaN vertices from a PyVista mesh and updates faces accordingly.
+        Remove vertices with NaN coordinates from the surface mesh.
 
-        Parameters
-        ----------
-            mesh :: 
+        This method identifies and removes any vertices in the mesh that contain NaN
+        values, and updates the face topology accordingly. Returns a new Surface
+        instance with the cleaned mesh.
 
         Returns
         -------
-            cleaned_mesh ::
-            
+        Surface
+            A new Surface instance with NaN vertices removed and faces updated.
         """
-        valid_mask = ~np.isnan(mesh.points).any(axis=1)
-        new_indices = np.full(mesh.n_points, -1, dtype=int)
+        valid_mask = ~np.isnan(self.mesh.points).any(axis=1)
+        new_indices = np.full(self.mesh.n_points, -1, dtype=int)
         new_indices[valid_mask] = np.arange(valid_mask.sum())
 
-        faces = mesh.faces.reshape((-1, 4))[:, 1:4]  # Extract triangle indices
+        faces = self.mesh.faces.reshape((-1, 4))[:, 1:4]  # Extract triangle indices
         valid_faces_mask = np.all(valid_mask[faces], axis=1)
         new_faces = new_indices[faces[valid_faces_mask]]
         new_faces_pv = np.hstack([np.full((new_faces.shape[0], 1), 3), new_faces])
 
-        cleaned_mesh = pv.PolyData(mesh.points[valid_mask], new_faces_pv)
-        return cleaned_mesh
-
-
-    @staticmethod
-    def find_boundary_vertices(mesh):
+        cleaned_mesh = pv.PolyData(self.mesh.points[valid_mask], new_faces_pv)
+        return Surface(cleaned_mesh, self.metadata.copy())
+    
+    def find_boundary_vertices(self):
         """
-        Find boundary vertices of a 3D mesh.
+        Find the boundary vertices of the surface mesh.
 
-        Parameters
-        ----------
-            mesh ::
+        A boundary vertex is one that lies on an edge used by only one face.
+        This is useful for detecting open boundaries or holes in the mesh.
 
         Returns
         -------
-            boundary_vertices :: numpy.array 
-                Array of vertex indices that are boundary vertices, sorted in ascending order.
+        np.ndarray
+            Sorted array of boundary vertex indices (int32 dtype).
         """
-        vertices = mesh.points
-        faces = mesh.faces.reshape((-1, 4))[:, 1:4]  # Extract triangle indices
+        faces = self.mesh.faces.reshape((-1, 4))[:, 1:4]
 
         edge_count = defaultdict(int)
-        # Step 1: Count edge occurrences
+
         for face in faces:
-            # Extract edges from the face, ensure consistent ordering (min, max)
             edges = [
                 tuple(sorted((face[0], face[1]))),
                 tuple(sorted((face[1], face[2]))),
@@ -201,13 +230,13 @@ class Surface:
             ]
             for edge in edges:
                 edge_count[edge] += 1
-        # Step 2: Identify boundary edges
+
         boundary_edges = [edge for edge, count in edge_count.items() if count == 1]
-        # Step 3: Collect boundary vertices
+
         boundary_vertices = set()
         for edge in boundary_edges:
             boundary_vertices.update(edge)
-        # Convert the set to a sorted list (array)
+
         return np.array(sorted(boundary_vertices), dtype=np.int32)
     
     def get_boundary_vertices(self, output_label_gii):

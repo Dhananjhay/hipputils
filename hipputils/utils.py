@@ -101,9 +101,7 @@ def dice(ref, res_mask, hipp_lbls, output_dice):
 
         output_dice : str
             File path to the output text file where the Dice score will be written.
-import os
-import urllib.request
-import zipfile
+
     Returns
     -------
         None
@@ -361,3 +359,145 @@ def download_extract(unzip_dir, url):
         zf.extractall(outdir)
 
     os.remove(zip_path)
+
+def read_metric_from_gii(metric_gifti):
+    """
+    Load a surface metric array from a GIFTI file.
+
+    Parameters
+    ----------
+        metric_gifti : str or Path
+            Path to the GIFTI file.
+
+    Returns
+    -------
+        np.ndarray
+            The first matching metric array.
+    """
+    return nib.load(metric_gifti).darrays[0].data
+
+def write_metric_gii(scalars, out_metric_gii, metadata=None):
+    """
+    Write a per-vertex scalar array (e.g., cortical metric) to a GIFTI (.gii) file.
+
+    This function creates a GIFTI file containing a single data array representing
+    scalar values defined on a brain surface, such as curvature, thickness, or
+    functional activation. Optional metadata such as anatomical structure labels
+    can be included in the GIFTI header.
+
+    Parameters
+    ----------
+        scalars : np.ndarray
+            A 1D array of scalar values (e.g., one value per vertex on a mesh).
+            The array is cast to float32 before saving.
+        out_path : str or Path
+            File path where the output GIFTI file will be saved.
+        metadata : dict, optional
+            Optional dictionary containing metadata to add to the GIFTI image.
+            If provided, keys such as 'AnatomicalStructurePrimary' will be added
+            to the GIFTI meta field.
+
+    Returns
+    -------
+        None
+
+    Notes
+    -----
+    - Only a single data array is written to the GIFTI file.
+    - This function does not require a full mesh, only scalar values.
+    - Useful for writing surface-based metrics generated from neuroimaging pipelines.
+    """
+
+    # save the coordinates to a gifti file
+    data_array = nib.gifti.GiftiDataArray(data=scalars.astype(np.float32))
+    image = nib.gifti.GiftiImage()
+
+    # set structure metadata
+    image.meta["AnatomicalStructurePrimary"] = metadata["AnatomicalStructurePrimary"]
+
+    image.add_gifti_data_array(data_array)
+    nib.save(image, out_metric_gii)
+
+def write_label_gii(label_scalars, out_label_gii, label_dict={}, metadata=None):
+    """
+    Write a label array to a GIFTI (.gii) label file with an optional label table.
+
+    This function encodes per-vertex discrete labels (e.g., cortical parcellation)
+    as a GIFTI file using the `NIFTI_INTENT_LABEL` intent. It supports assigning
+    a label lookup table (LUT) and optional anatomical metadata.
+
+    Parameters
+    ----------
+        label_scalars : np.ndarray
+            A 1D array of integers where each value represents the label assigned to
+            a vertex (e.g., 0 = unknown, 1 = hippocampus, 2 = amygdala, etc.).
+        out_label_gii : str or Path
+            Path to the output GIFTI label file (.gii).
+        label_dict : dict, optional
+            A dictionary where keys are label names (str), and values are keyword
+            arguments to initialize `nibabel.gifti.GiftiLabel` (e.g., {'Red': 255}).
+        metadata : dict, optional
+            Optional metadata to add to the GIFTI file header, such as
+            {'AnatomicalStructurePrimary': 'CortexLeft'}.
+
+    Returns
+    -------
+        None
+
+    Notes
+    -----
+    - This function assumes that `label_scalars` corresponds to surface vertices.
+    - The label LUT is stored in the GIFTI LabelTable element.
+    - Colors and keys must be set manually via `label_dict`.
+    """
+
+    # Create a GIFTI label data array
+    gii_data = nib.gifti.GiftiDataArray(label_scalars, intent="NIFTI_INTENT_LABEL")
+
+    # Create a Label Table (LUT)
+    label_table = nib.gifti.GiftiLabelTable()
+
+    for label_name, label_kwargs in label_dict.items():
+
+        lbl = nib.gifti.GiftiLabel(**label_kwargs)
+        lbl.label = label_name
+        label_table.labels.append(lbl)
+
+    # Assign label table to GIFTI image
+    gii_img = nib.gifti.GiftiImage(darrays=[gii_data], labeltable=label_table)
+
+    # set structure metadata
+    if metadata is not None:
+        gii_img.meta["AnatomicalStructurePrimary"] = metadata[
+            "AnatomicalStructurePrimary"
+        ]
+
+    # Save the label file
+    gii_img.to_filename(out_label_gii)
+
+def get_adjacent_voxels(mask_a, mask_b):
+    """
+    Create a mask for voxels where label A is adjacent to label B.
+
+    Parameters
+    ----------
+        mask_a :: np.ndarray
+            A 3D binary mask for label A.
+        mask_b :: np.ndarray
+            A 3D binary mask for label B.
+
+    Returns
+    -------
+        adjacency_mask :: np.ndarray
+            A 3D mask where adjacent voxels for label A and label B are marked as True.
+    """
+    # Dilate each mask to identify neighboring regions
+    dilated_a = binary_dilation(mask_a)
+    dilated_b = binary_dilation(mask_b)
+
+    # Find adjacency: voxels of A touching B and B touching A
+    adjacency_mask = (dilated_a.astype("bool") & mask_b.astype("bool")) | (
+        dilated_b.astype("bool") & mask_a.astype("bool")
+    )
+
+    return adjacency_mask
