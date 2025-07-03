@@ -8,22 +8,22 @@ from scipy.ndimage import binary_dilation, generate_binary_structure
 
 def concat_tsv(input, output_tsv):
     """
-    **TODO**
+    Concatenates multiple TSV files into a single output TSV file.
 
     Parameters
     ----------
-        input :: 
-
-        output_tsv ::
+        input : list of str
+            List of file paths to the input TSV files to be concatenated.
+        
+        output_tsv : str
+            File path for the output TSV file that will contain the concatenated contents.
 
     Returns
     -------
         None
-    
     """
-
     pd.concat([pd.read_table(in_tsv) for in_tsv in input]).to_csv(
-    output_tsv, sep="\t", index=False
+        output_tsv, sep="\t", index=False
     )
 
 def convert_warp_2d_to_3d(input_warp, input_ref, output_warp):
@@ -79,24 +79,35 @@ def convert_warp_2d_to_3d(input_warp, input_ref, output_warp):
 
 def dice(ref, res_mask, hipp_lbls, output_dice):
     """
-    Dice
+    Computes the Dice similarity coefficient between a reference binary mask and a predicted mask 
+    for specified hippocampal labels, and writes the result to a text file.
 
     Parameters
     ----------
+        ref : str
+            File path to the reference NIfTI image containing the ground truth binary mask.
 
+        res_mask : str
+            File path to the predicted NIfTI image, where regions of interest are labeled.
+
+        hipp_lbls : list of int
+            List of label values in `res_mask` that correspond to the hippocampal structures 
+            to be included in the Dice calculation.
+
+        output_dice : str
+            File path to the output text file where the Dice score will be written.
 
     Returns
     -------
         None
-    
     """
-
     r = nib.load(ref)
     ref_mask = r.get_fdata()
+
     n = nib.load(res_mask)
     nnunet_rois = n.get_fdata()
-
     nnunet_bin = np.zeros(nnunet_rois.shape)
+
     lbls = hipp_lbls
     for l in lbls:
         nnunet_bin[nnunet_rois == l] = 1
@@ -111,14 +122,25 @@ def dice(ref, res_mask, hipp_lbls, output_dice):
 
 def plot_subj_subfields(input_tsv, wildcards, output_png):
     """
-    
+    Generates and saves a line plot comparing left and right hippocampal subfield volumes 
+    for a given subject, using data from a TSV file.
+
     Parameters
     ----------
+        input_tsv : str
+            Path to a TSV file containing volume measurements for hippocampal subfields.
+            The table must include 'subject', 'hemi', and 'Cyst' columns, which will be dropped.
+
+        wildcards : str or object
+            Identifier (e.g., subject ID or Snakemake wildcards object) used as the title of the plot.
+
+        output_png : str
+            Path to the output PNG file where the plot will be saved.
 
     Returns
     -------
         None
-    
+
     """
 
     matplotlib.use("Agg")
@@ -135,10 +157,33 @@ def plot_subj_subfields(input_tsv, wildcards, output_png):
 
 def rewrite_vertices_to_flat(input_surf_gii, coords_AP, coords_PD, vertspace, z_level, output_surf_gii):
     """
-    Remove vertices to flat
-
+    Projects a 3D surface geometry to a flat 2D plane using anterior-posterior (AP) and 
+    proximal-distal (PD) coordinate maps, and sets a constant Z level for all vertices.
+    
     Parameters
     ----------
+        input_surf_gii : str
+            Path to the input GIFTI surface file (.surf.gii) containing 3D vertex coordinates.
+
+        coords_AP : str
+            Path to a GIFTI file containing the AP (anterior-posterior) scalar coordinates.
+
+        coords_PD : str
+            Path to a GIFTI file containing the PD (proximal-distal) scalar coordinates.
+
+        vertspace : dict
+            Dictionary with keys `"extent"` and `"origin"` that define the scaling and translation 
+            of the AP/PD space. Example:
+                {
+                    "extent": [AP_extent, PD_extent],
+                    "origin": [AP_origin, PD_origin]
+                }
+
+        z_level : float
+            The fixed Z-coordinate value to assign to all vertices (used to flatten in 2D).
+
+        output_surf_gii : str
+            Path to the output GIFTI surface file (.surf.gii) where the flattened geometry will be saved.
 
     Returns
     -------
@@ -162,23 +207,24 @@ def rewrite_vertices_to_flat(input_surf_gii, coords_AP, coords_PD, vertspace, z_
 
 def gen_volume_tsv(lookup_tsv, segs, subjects, output_tsv):
     """
-    Gnerate volume tsv
+    Generates a TSV file summarizing volumes of segmented regions for each subject and hemisphere.
 
     Parameters
     ----------
+        lookup_tsv : str
+            Path to a TSV file that maps label indices to region names (with columns "index" and "abbreviation").
 
-        lookup_tsv ::
+        segs : list of str
+            List of paths to segmentation image files (one per hemisphere).
 
-        segs :: PATH
-            Path to seg image file
+        subjects : str
+            Subject identifier (used to label the output rows, e.g., "001").
 
-        subjects ::
+        output_tsv : str
+            Path to the output TSV file that will store the volume measurements.
 
-        output_tsv :: PATH
-            Path to output file
-
-    Return
-    ------
+    Returns
+    -------
         None
     """
 
@@ -219,27 +265,41 @@ def selective_dilation(
     input_nifti, output_nifti, src, sink, src_bg, sink_bg, structure_size=3
 ):
     """
+    Perform selective binary dilation on specified labels in a NIfTI image.
+
+    This function dilates voxels belonging to two labels (`src` and `sink`) 
+    only into their respective background regions (`src_bg` and `sink_bg`) 
+    using a 3D structuring element. The dilation expands each label within 
+    its allowed background without overlapping other structures.
 
     Parameters
     ----------
-        input_nifti ::
+        input_nifti : str
+            Path to the input NIfTI image file.
 
-        output_nifti ::
+        output_nifti : str
+            Path where the output dilated NIfTI image will be saved.
 
-        src ::
+        src : int
+            Label value in the image to be selectively dilated (source label).
 
-        sink ::
+        sink : int
+            Another label value to be selectively dilated (sink label).
 
-        src_bg ::
+        src_bg : int
+            Background label value into which `src` voxels are allowed to dilate.
 
-        sink_bg ::
+        sink_bg : int
+            Background label value into which `sink` voxels are allowed to dilate.
 
-        structure_siz ::
-            
+        structure_size : int, optional (default=3)
+            Size parameter for the structuring element used in dilation 
+            (currently not used in this implementation, but can be added to 
+            control dilation neighborhood).
+
     Returns
     -------
         None
-    
     """
     # Load image
     img = nib.load(input_nifti)
@@ -265,6 +325,3 @@ def selective_dilation(
     nib.save(new_img, output_nifti)
 
     print(f"Output saved to {output_nifti}")
-
-
-
