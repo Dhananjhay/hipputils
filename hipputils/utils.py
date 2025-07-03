@@ -28,21 +28,23 @@ def concat_tsv(input, output_tsv):
 
 def convert_warp_2d_to_3d(input_warp, input_ref, output_warp):
     """
-
-    Convert warp from 2 dimensions to 3 dimensions.
+    Converts a 2D warp field (used for image registration) into a 3D warp field
+    by copying the 2D displacement across all slices in the Z dimension.
 
     Parameters
     ----------
-        input_warp ::
+        input_warp : str
+            Path to the input 2D warp field NIfTI file. Should be shape (X, Y, 1, 1, 2) or (X, Y, 1, 2).
 
-        input_ref :: 
+        input_ref : str
+            Path to the 3D reference image NIfTI file. Used to determine the Z dimension.
 
-        output_warp ::
+        output_warp : str
+            Path to the output 3D warp field NIfTI file. Output shape will be (X, Y, Z, 1, 3).
 
     Returns
     -------
         None
-
     """
 
     # Read 2D xfm nifti
