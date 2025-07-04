@@ -124,7 +124,6 @@ def dice(ref, res_mask, hipp_lbls, output_dice):
         f.write(str(dice))
 
 
-
 def plot_subj_subfields(input_tsv, wildcards, output_png):
     """
     Generates and saves a line plot comparing left and right hippocampal subfield volumes 
@@ -209,61 +208,6 @@ def rewrite_vertices_to_flat(input_surf_gii, coords_AP, coords_PD, vertspace, z_
     vertices[:, 2] = z_level
 
     nib.save(gii, output_surf_gii)
-
-def gen_volume_tsv(lookup_tsv, segs, subjects, output_tsv):
-    """
-    Generates a TSV file summarizing volumes of segmented regions for each subject and hemisphere.
-
-    Parameters
-    ----------
-        lookup_tsv : str
-            Path to a TSV file that maps label indices to region names (with columns "index" and "abbreviation").
-
-        segs : list of str
-            List of paths to segmentation image files (one per hemisphere).
-
-        subjects : str
-            Subject identifier (used to label the output rows, e.g., "001").
-
-        output_tsv : str
-            Path to the output TSV file that will store the volume measurements.
-
-    Returns
-    -------
-        None
-    """
-
-    lookup_df = pd.read_table(lookup_tsv, index_col="index")
-
-    # get indices and names from lookup table
-    indices = lookup_df.index.to_list()
-    names = lookup_df.abbreviation.to_list()
-    hemis = ["L", "R"]
-
-    # create the output dataframe
-
-    df = pd.DataFrame(columns=["subject", "hemi"] + names)
-
-    for in_img, hemi in zip(segs, hemis):
-        img_nib = nib.load(in_img)
-        img = img_nib.get_fdata()
-        zooms = img_nib.header.get_zooms()
-
-        # voxel size in mm^3
-        voxel_mm3 = np.prod(zooms)
-
-        new_entry = {
-            "subject": "sub-{subject}".format(subject=subjects),
-            "hemi": hemi,
-        }
-        for index, name in zip(indices, names):
-            # add volume as value, name as key
-            new_entry[name] = np.sum(img == index) * voxel_mm3
-
-        # now create a dataframe from it
-        df = df.append(new_entry, ignore_index=True)
-
-    df.to_csv(output_tsv, sep="\t", index=False)
 
 
 def selective_dilation(
