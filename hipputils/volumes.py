@@ -1,6 +1,7 @@
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from scipy.stats import mode
 
 
 def compute_label_volumes(seg_img_path, lookup_df):
@@ -73,3 +74,38 @@ def generate_volume_dataframe(subject_id, seg_paths, lookup_tsv, output_tsv, hem
     df.to_csv(output_tsv, sep="\t", index=False)
 
     return df
+
+
+def majority_vote_niis(nii_files, out_file):
+    """
+    Perform majority voting across multiple NIfTI label volumes and save the result.
+
+    Parameters
+    ----------
+    nii_files : list of str
+        List of file paths to input NIfTI images (all must have the same shape).
+    out_file : str
+        Output path for the majority voted NIfTI image.
+
+    Raises
+    ------
+    ValueError
+        If input images do not have the same shape.
+    """
+    nii_images = [nib.load(f) for f in nii_files]
+    nii_data = [img.get_fdata() for img in nii_images]
+
+    # Verify all images have the same shape
+    shape = nii_data[0].shape
+    if not all(img.shape == shape for img in nii_data):
+        raise ValueError("All input NIfTI images must have the same dimensions.")
+
+    # Stack along new axis and compute majority vote
+    nii_stack = np.stack(nii_data, axis=-1)
+    majority_vote, _ = mode(nii_stack, axis=-1, keepdims=False)
+
+    # Save majority vote output
+    out_img = nib.Nifti1Image(
+        majority_vote.squeeze(), nii_images[0].affine, nii_images[0].header
+    )
+    nib.save(out_img, out_file)
