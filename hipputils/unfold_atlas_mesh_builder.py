@@ -39,8 +39,8 @@ class UnfoldAtlasMeshBuilder:
             A Surface object encapsulating the generated mesh.
         """
         # Create 2D meshgrid points in metric space
-        x = np.arange(self.metric_data.shape[0])
-        y = np.arange(self.metric_data.shape[1])
+        x = np.linspace(0, self.metric_data.shape[0]-1, self.metric_data.shape[0])
+        y = np.linspace(0, self.metric_data[1]-1, self.metric_data.shape[1])
         coords_y, coords_x = np.meshgrid(y, x)
         all_points = np.column_stack((coords_x.ravel(), coords_y.ravel()))
 
@@ -48,7 +48,7 @@ class UnfoldAtlasMeshBuilder:
         tri = Delaunay(all_points)
 
         # Add placeholder z=0 for all points
-        points = np.column_stack((all_points, np.zeros(all_points.shape[0])))
+        points = np.column_stack((all_points, np.full(all_points.shape[0],0)))
 
         # Filter valid vertices (non-zero metric values)
         valid_mask = (self.metric_data > 0).ravel()
@@ -56,10 +56,11 @@ class UnfoldAtlasMeshBuilder:
 
         # Apply affine transform to physical space (homogeneous coords)
         coords_h = np.hstack((filtered_points, np.ones((filtered_points.shape[0], 1))))
-        transformed = (self.affine @ coords_h.T).T[:, :3]
+        transformed = (self.affine @ coords_h.T)
+        filtered_points = transformed.T[:,:3]
 
         # Set all z-coordinates to specified z_level
-        transformed[:, 2] = self.z_level
+        filtered_points[:, 2] = self.z_level
 
         # Remap triangle vertex indices to filtered points
         new_indices = np.full(points.shape[0], -1, dtype=int)
