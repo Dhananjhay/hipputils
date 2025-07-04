@@ -239,62 +239,44 @@ class Surface:
 
         return np.array(sorted(boundary_vertices), dtype=np.int32)
     
-    def get_boundary_vertices(self, output_label_gii):
+    def get_largest_boundary_component_label(self) -> np.ndarray:
         """
-        Identify and mark the boundary vertices of a surface mesh, then save the result as a GIFTI label file.
-
-        Parameters
-        ----------
-            output_label_gii : str
-                The file path where the resulting GIFTI label file will be saved.
+        Identify boundary vertices of the surface mesh and return a scalar array marking those that belong to the largest connected component.
 
         Returns
         -------
-            None
-        
+        np.ndarray
+            A binary array of shape (n_points,) with 1s marking boundary vertices in the largest connected component, and 0s elsewhere.
         """
 
-        logger.info("Loading surface from GIFTI...")
-        surface = self.load_surface_as_pyvista()
-        logger.info(f"Surface loaded: {surface.n_points} vertices, {surface.n_faces} faces.")
+        boundary_indices = self.find_boundary_vertices()
 
-        logger.info("Find boundary vertices")
-        boundary_indices = self.find_boundary_vertices(surface)
-
-        boundary_scalars = np.zeros(surface.n_points, dtype=np.int32)  # Default is 0
+        boundary_scalars = np.zeros(self.mesh.n_points, dtype=np.int32)
         boundary_scalars[boundary_indices] = 1  # Set boundary vertices to 1
-        logger.info(
-            f"Boundary scalar array created. {np.sum(boundary_scalars)} boundary vertices marked."
+
+        # Extract points that are within the boundary scalars
+        sub_mesh = self.mesh.extract_points(
+            boundary_scalars.astype(bool), adjacent_cells=True
         )
 
-        logger.info("Saving GIFTI label file...")
+        # Compute connectivity to find the largest connected component
+        connected_sub_mesh = sub_mesh.connectivity("largest")
 
-        # Create a GIFTI label data array
-        gii_data = gifti.GiftiDataArray(boundary_scalars, intent="NIFTI_INTENT_LABEL")
+        # Get indices of the largest component in the sub-mesh
+        largest_component_mask = (
+            connected_sub_mesh.point_data["RegionId"] == 0
+        )  # Largest component has RegionId 0
+        largest_component_indices = connected_sub_mesh.point_data["vtkOriginalPointIds"][
+            largest_component_mask
+        ]
 
-        # Create a Label Table (LUT)
-        label_table = gifti.GiftiLabelTable()
+        # Create an array for all points in the original surface
+        boundary_scalars = np.zeros(self.mesh.n_points, dtype=np.int32)
 
-        # Define Background label (key 0)
-        background_label = gifti.GiftiLabel(
-            key=0, red=1.0, green=1.0, blue=1.0, alpha=0.0
-        )  # Transparent
-        background_label.label = "Background"
-        label_table.labels.append(background_label)
+        # Keep only the largest component
+        boundary_scalars[largest_component_indices] = 1
 
-        # Define Boundary label (key 1)
-        boundary_label = gifti.GiftiLabel(
-            key=1, red=1.0, green=0.0, blue=0.0, alpha=1.0
-        )  # Red color
-        boundary_label.label = "Boundary"
-        label_table.labels.append(boundary_label)
-
-        # Assign label table to GIFTI image
-        gii_img = gifti.GiftiImage(darrays=[gii_data], labeltable=label_table)
-
-        # Save the label file
-        gii_img.to_filename(output_label_gii)
-        logger.info(f"GIFTI label file saved as '{output_label_gii}'.")
+        return boundary_scalars
 
     @staticmethod
     def get_terminal_indices_firstminima(
