@@ -429,3 +429,24 @@ class Surface:
         # Preserve metadata
         return Surface(new_mesh, metadata=self.metadata.copy())
 
+
+    def set_z_level(self, z_level: float) -> "Surface":
+        """
+        Return a new Surface with all vertex z-coordinates set to a constant.
+
+        Parameters
+        ----------
+        z_level : float
+            The z coordinate to assign to every vertex.
+
+        Returns
+        -------
+        Surface
+            A new Surface instance with updated z-coordinates.
+        """
+        # Copy mesh so original isn’t mutated
+        new_mesh = self.mesh.copy()
+        new_mesh.points[:, 2] = float(z_level)
+        return Surface(new_mesh, metadata=self.metadata.copy())
+
+
