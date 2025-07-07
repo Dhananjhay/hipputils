@@ -142,3 +142,29 @@ def copy_header_affine(src_nii_path: str, ref_nii_path: str, out_nii_path: str) 
     # Create and save new image
     out_img = nib.Nifti1Image(data, affine, header)
     out_img.to_filename(out_nii_path)
+
+
+def extract_nifti_slice(
+    src_nii_path: str,
+    out_nii_path: str
+) -> None:
+    """
+    Extract a 2D slice from a 3D NIfTI image and save as a new NIfTI.
+
+    Parameters
+    ----------
+    src_nii_path : str or Path
+        Path to the source 3D NIfTI file.
+    out_nii_path : str or Path
+        Path where the 2D NIfTI slice will be saved.
+
+    Returns
+    -------
+    None
+    """
+    img = nib.load(src_nii_path)
+    matrix = img.get_fdata()[:, :, 0]
+
+    # Save as NIfTI (preserve affine, drop header)
+    out_img = nib.Nifti1Image(matrix, img.affine)
+    out_img.to_filename(out_nii_path)
