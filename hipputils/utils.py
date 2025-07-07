@@ -445,3 +445,20 @@ def get_adjacent_voxels(mask_a, mask_b):
     )
 
     return adjacency_mask
+
+def write_dict_to_json(data: dict, out_json: str):
+    """
+    Write a Python dictionary to a JSON file with pretty formatting.
+
+    Parameters
+    ----------
+    data : dict
+        Dictionary to serialize.
+    out_json : str or Path
+        Path to the output JSON file.
+    """
+
+    out_path = Path(out_json)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump(data, f, indent=4)
