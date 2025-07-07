@@ -392,5 +392,40 @@ class Surface:
         laplacian = sp.diags(diagonal) - weights
         return laplacian
 
+    def map_to_flat(self, ap: np.ndarray, pd: np.ndarray, 
+                    extent: tuple[float, float], 
+                    origin: tuple[float, float], 
+                    z_level: float) -> "Surface":
+        """
+        Reposition vertices onto a flat 2D grid using two per-vertex metrics.
 
+        Parameters
+        ----------
+        ap : np.ndarray
+            AP-coordinate metric per vertex, in [0,1].
+        pd : np.ndarray
+            PD-coordinate metric per vertex, in [0,1].
+        extent : tuple of float
+            The full size of the target plane in the AP and PD directions,
+            e.g. (AP_extent, PD_extent).
+        origin : tuple of float
+            The offset of the plane origin in the AP and PD directions.
+        z_level : float
+            Constant z-coordinate to assign to all vertices.
+
+        Returns
+        -------
+        Surface
+            A new Surface instance whose mesh has been flattened.
+        """
+        # Copy mesh so original isn’t mutated
+        new_mesh = self.mesh.copy()
+
+        # Map AP → x, PD → y, constant z
+        new_mesh.points[:, 0] = -ap * float(extent[0]) - float(origin[0])
+        new_mesh.points[:, 1] = pd  * float(extent[1]) - float(origin[1])
+        new_mesh.points[:, 2] = float(z_level)
+
+        # Preserve metadata
+        return Surface(new_mesh, metadata=self.metadata.copy())
 
