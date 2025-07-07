@@ -1,156 +1,120 @@
+# lib/visualization.py
+
+import matplotlib.pyplot as plt
+import numpy as np
 from nilearn import plotting
 
-import matplotlib
-import matplotlib.pyplot as plt
 
-matplotlib.use("Agg")
-
-
-class Visualization:
+def plot_segmentation_qc(seg_path, anat_path, out_png, dim: float = -0.5, offset: float = 2.0):
     """
-    Visualization class for quality control
+    Generate a 3‑panel QC figure for a segmentation overlaid on anatomy:
+      1) Centered cuts
+      2) Shifted backward by `offset` mm
+      3) Shifted forward by `offset` mm
+
+    Parameters
+    ----------
+    seg_path : str or Path
+        Path to the segmentation image.
+    anat_path : str or Path
+        Path to the anatomical (background) image.
+    out_png : str or Path
+        Output filepath for the saved QC PNG.
+    dim : float, optional
+        Background dimming value, default -0.5.
+    offset : float, optional
+        Millimeter shift for backward/forward views, default 2.0.
     """
+    matplotlib = plt.matplotlib
+    matplotlib.use("Agg")
 
-    def __init__(self, type):
-        """
-        Initialize an object of this class
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 12))
 
-        Parameters
-        ----------
-            type :: str
-                Type of quality control inspection
-
-        Returns
-        -------
-            None
-
-        """
-
-        if isinstance(type, str):
-            self.type = type
-        else:
-            raise TypeError(
-                "Parameter type need to be a str input, i.e., qc_dseg, qc_reg or qc_surf"
-            )
-
-    def qc(
-        self,
-        roi_img,
-        bg_img,
-        flo_img,
-        ref_img,
-        surf_img,
-        output,
-        dim=-0.5,
+    # Centered
+    disp = plotting.plot_roi(
+        axes=ax1,
+        roi_img=seg_path,
+        bg_img=anat_path,
         display_mode="ortho",
-    ):
-        """
-        Type of quality control inspection to apply
+        view_type="continuous",
+        alpha=0.5,
+        dim=dim,
+        draw_cross=False,
+    )
 
-        Parameters
-        ----------
+    # Backward
+    plotting.plot_roi(
+        axes=ax2,
+        roi_img=seg_path,
+        bg_img=anat_path,
+        cut_coords=[c - offset for c in disp.cut_coords],
+        display_mode="ortho",
+        view_type="continuous",
+        alpha=0.5,
+        dim=dim,
+        draw_cross=False,
+    )
 
-            roi_img :: PATH
-                Path to ROI image
+    # Forward
+    plotting.plot_roi(
+        axes=ax3,
+        roi_img=seg_path,
+        bg_img=anat_path,
+        cut_coords=[c + offset for c in disp.cut_coords],
+        display_mode="ortho",
+        view_type="continuous",
+        alpha=0.5,
+        dim=dim,
+        draw_cross=False,
+    )
 
-            bg_img :: PATH
-                Path to backgrounf (bg) image
+    fig.tight_layout()
+    fig.savefig(out_png)
+    plt.close(fig)
 
-            flo_img :: PATH
-                Path to flo image
 
-            ref_img :: PATH
-                Path to reference (ref) image
+def plot_surface_qc(surf_path, out_png, view: str = "dorsal"):
+    """
+    Generate a 3D surface QC image.
 
-            surf_img :: PATH
-                Path to surface (surf) image
+    Parameters
+    ----------
+    surf_path : str or Path
+        Path to the surface file (e.g., GIFTI or otherwise supported by Nilearn).
+    out_png : str or Path
+        Where to save the surface QC PNG.
+    view : str, optional
+        Nilearn view angle (e.g., 'dorsal', 'lateral', etc.).
+    """
+    matplotlib = plt.matplotlib
+    matplotlib.use("Agg")
 
-            output :: PATH
-                Path to output image
+    fig = plotting.plot_surf(surf_path, view=view)
+    fig.savefig(out_png)
+    plt.close(fig)
 
-            dim :: int or float
-                Dimensions of an image
 
-            display_mode :: str
-                Display mode of an image
+def plot_registration_qc(flo_path, ref_path, out_png, dim: float = -0.5, contour_color: str = "r"):
+    """
+    Generate a registration QC figure: moving image with reference contours.
 
-        Returns
-        -------
-            None
-        """
+    Parameters
+    ----------
+    flo_path : str or Path
+        Path to the floating (to be registered) image.
+    ref_path : str or Path
+        Path to the reference image for contours.
+    out_png : str or Path
+        Where to save the registration QC PNG.
+    dim : float, optional
+        Background dimming value.
+    contour_color : str, optional
+        Color for the reference contours.
+    """
+    matplotlib = plt.matplotlib
+    matplotlib.use("Agg")
 
-        if not isinstance(display_mode, str):
-            raise TypeError("Parameter display_mode needs to be type str")
-
-        if not isinstance(dim, int or float):
-            raise TypeError("Paramter dim needs to be type int or float")
-
-        if self.type == "qc_dseg":
-
-            if roi_img is None:
-                raise ValueError("Parameter roi_image cannot be None")
-
-            if bg_img is None:
-                raise ValueError("Parameter bg_image cannot be Nnoe")
-
-            fig, (ax1, ax2, ax3) = plt.subplot(3, 1)
-
-            display = plotting.plot_roi(
-                axes=ax1,
-                roi_img=roi_img,
-                bg_img=bg_img,
-                display_mode=display_mode,
-                view_type="continuous",
-                alpha=0.5,
-                dim=dim,
-                draw_cross=False,
-            )
-
-            # move 2mm backwards in each direction
-            plotting.plot_roi(
-                axes=ax2,
-                roi_img=roi_img,
-                bg_img=bg_img,
-                cut_coords=[x - 2 for x in display.cut_coords],
-                display_mode=display_mode,
-                view_type="continuous",
-                alpha=0.5,
-                dim=dim,
-                draw_cross=False,
-            )
-
-            plotting.plot_roi(
-                axes=ax3,
-                roi_img=roi_img,
-                bg_img=bg_img,
-                cut_coords=[x + 2 for x in display.cut_coords],
-                display_node=display_mode,
-                view_typ="continuous",
-                alpha=0.5,
-                dim=dim,
-                draw_cross=False,
-            )
-
-            fig.savefig(output)
-
-        elif self.type == "qc_reg":
-
-            if flo_img is None:
-                raise ValueError("Parameter flo_img cannot be None")
-
-            if ref_img is None:
-                raise ValueError("Parameter ref_img cannot be None")
-
-            display = plotting.plot_anat(flo_img, display_mode=display_mode, dim=dim)
-            display.add_contours(ref_img, colors="r")
-            display.savefig(output)
-            display.close()
-
-        else:
-
-            if surf_img is None:
-                raise ValueError("Parameter surf_img cannot be None")
-
-            plotting.plot(surf_img, view="dorsal")
-
-            fig.savefig(output)
+    display = plotting.plot_anat(flo_path, display_mode="ortho", dim=dim)
+    display.add_contours(ref_path, colors=contour_color)
+    display.savefig(out_png)
+    display.close()
