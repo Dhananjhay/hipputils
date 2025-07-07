@@ -1,7 +1,7 @@
 import re
 import numpy as np
 import pandas as pd
-from hipputils.surface import Surface  # adjust import based on your project structure
+from surface import Surface  # adjust import based on your project structure
 
 def summarize_surface_densities(surf_giis, output_csv):
     """
@@ -24,20 +24,16 @@ def summarize_surface_densities(surf_giis, output_csv):
 
     for surf_gii in surf_giis:
         # Extract info from filename with regex
-        resample = re.search(r"_resample-(\d+)_", str(surf_gii))
-        hemi = re.search(r"_hemi-([LR])_", str(surf_gii))
-        label = re.search(r"_label-(hipp|dentate)_", str(surf_gii))
-
-        resample_val = resample.group(1) if resample else "NA"
-        hemi_val = hemi.group(1) if hemi else "NA"
-        label_val = label.group(1) if label else "NA"
+        resample = re.search(r"_resample-(\d+)_", surf_gii).group(1)
+        hemi = re.search(r"_hemi-([LR])_", surf_gii).group(1)
+        label = re.search(r"_label-(hipp|dentate)_", surf_gii).group(1)
 
         # Load surface as Surface object
-        surface = Surface.from_gifti(surf_gii)
+        surface, metadata = Surface.from_gifti(surf_gii)
 
         n_vertices = surface.mesh.n_points
         if n_vertices > 850:
-            density = f"{int(np.round(n_vertices / 1000))}k"
+            density = "{n}k".format(n=int(np.round(n_vertices / 1000)))
         else:
             density = str(n_vertices)
 
@@ -54,9 +50,9 @@ def summarize_surface_densities(surf_giis, output_csv):
 
         record = {
             "surf_gii": str(surf_gii),
-            "hemi": hemi_val,
-            "label": label_val,
-            "resample": resample_val,
+            "hemi": hemi,
+            "label": label,
+            "resample": resample,
             "n_vertices": n_vertices,
             "density": density,
             **stats,
