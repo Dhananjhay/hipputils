@@ -109,3 +109,36 @@ def majority_vote_niis(nii_files, out_file):
         majority_vote.squeeze(), nii_images[0].affine, nii_images[0].header
     )
     nib.save(out_img, out_file)
+
+import nibabel as nib
+
+def copy_header_affine(src_nii_path: str, ref_nii_path: str, out_nii_path: str) -> None:
+    """
+    Copy the header and affine from a reference NIfTI image to another image.
+
+    Parameters
+    ----------
+    src_nii_path : str or Path
+        Path to the source NIfTI file whose data will be reused.
+    ref_nii_path : str or Path
+        Path to the reference NIfTI file whose header and affine will be copied.
+    out_nii_path : str or Path
+        Path to save the new NIfTI file with updated header and affine.
+
+    Raises
+    ------
+    IOError
+        If any of the input files cannot be loaded or the output cannot be written.
+    """
+    # Load images
+    ref_img = nib.load(ref_nii_path)
+    src_img = nib.load(src_nii_path)
+
+    # Extract data, reference header, and affine
+    data = src_img.get_fdata()
+    header = ref_img.header.copy()
+    affine = ref_img.affine
+
+    # Create and save new image
+    out_img = nib.Nifti1Image(data, affine, header)
+    out_img.to_filename(out_nii_path)
