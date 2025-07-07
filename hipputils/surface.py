@@ -450,3 +450,76 @@ class Surface:
         return Surface(new_mesh, metadata=self.metadata.copy())
 
 
+    def spring_smooth_toward(
+        self,
+        target: "Surface",
+        max_iterations: int,
+        step_size: float,
+        tol: float = 1e-6,
+    ) -> "Surface":
+        """
+        Iterative spring-based smoothing that moves this surface’s vertices toward
+        uniform edge lengths defined by a target surface.
+
+        Parameters
+        ----------
+        target : Surface
+            The reference surface providing “native” edge lengths.
+        max_iterations : int
+            Maximum number of smoothing iterations.
+        step_size : float
+            Scaling factor for displacement per iteration.
+        tol : float, optional
+            Early‑stop tolerance on mean absolute displacement (default 1e-6).
+
+        Returns
+        -------
+        Surface
+            A new Surface with smoothed vertex positions.
+        """
+
+        # Extract points & faces
+        points = self.mesh.points.copy()
+        faces = self.mesh.faces.reshape(-1, 4)[:, 1:4]
+
+        edges = np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]], axis=0)
+        edges = np.sort(edges, axis=1)  # Ensure ordering for uniqueness
+        edges = np.unique(edges, axis=0)
+        edge_vectors = points[edges[:, 1]] - points[edges[:, 0]]
+
+        # Compute target lengths from reference
+        tgt_pts = target.mesh.points
+        edge_vectors_native = tgt_pts[edges[:, 1]] - tgt_pts[edges[:, 0]]
+        target_length = np.linalg.norm(edge_vectors_native, axis=1)
+
+        # Iteratively solve
+        for i in range(max_iterations):        
+            edge_vectors = points[edges[:, 1]] - points[edges[:, 0]]
+            current_lengths = np.linalg.norm(edge_vectors, axis=1)
+            mask = current_lengths > 1e-6  # Avoid division by zero
+
+            forces = np.zeros_like(edge_vectors)
+            forces[mask] = (
+                (target_length[mask] - current_lengths[mask])[:, None]
+                * edge_vectors[mask]
+                / current_lengths[mask][:, None]
+            )
+
+            # Accumulate forces at each vertex
+            displacement = np.zeros_like(points)
+            np.add.at(displacement, edges[:, 0], -step_size * forces)
+            np.add.at(displacement, edges[:, 1],  step_size * forces)
+
+            # Update vertex positions
+            points += displacement
+
+            if i % 100 == 0:
+            mae = np.mean(np.abs(displacement))
+            if mae < tol:
+                self.logger.info("stopping early")
+                break
+
+        new_mesh = pv.PolyData(points, self.mesh.faces)
+        return Surface(new_mesh, metadata=self.metadata.copy())
+
+
